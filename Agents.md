@@ -168,7 +168,7 @@ flutter clean
 
 ## 项目资源文档
 
-* UI 设计图地址：https://www.figma.com/make/eitjLK5CO0RKSzkEbszDCs/%E4%B8%AA%E4%BA%BA%E8%B5%84%E6%96%99%E7%95%8C%E9%9D%A2%E8%AE%BE%E8%AE%A1?p=f&t=sBz0zhu16lZnjlDx-0&fullscreen=1
+* UI 设计图地址：https://nimbus-plugin-67471378.figma.site/
 * 后端接口地址：无
 
 
