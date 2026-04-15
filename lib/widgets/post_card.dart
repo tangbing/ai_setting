@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../models/post_model.dart';
@@ -395,8 +397,9 @@ class _PostVideoPreview extends StatelessWidget {
           children: [
             AspectRatio(
               aspectRatio: 1.4,
-              child: _NetworkImage(
-                image: media.thumbnailUrl ?? '',
+              child: _MediaCover(
+                media: media,
+                previewPath: media.thumbnailUrl,
                 fit: BoxFit.cover,
               ),
             ),
@@ -537,7 +540,53 @@ class _TappableImage extends StatelessWidget {
       onTap: () => _openViewer(context, mediaItems, mediaIndex),
       child: Hero(
         tag: 'post-media-${media.url}-$mediaIndex',
-        child: _NetworkImage(image: media.url),
+        child: _MediaCover(media: media),
+      ),
+    );
+  }
+}
+
+class _MediaCover extends StatelessWidget {
+  const _MediaCover({
+    required this.media,
+    this.previewPath,
+    this.fit = BoxFit.cover,
+  });
+
+  final PostMedia media;
+  final String? previewPath;
+  final BoxFit fit;
+
+  @override
+  Widget build(BuildContext context) {
+    final path = previewPath ?? media.url;
+
+    if (media.isVideo && (previewPath == null || previewPath!.isEmpty)) {
+      return Container(
+        color: const Color(0xFF111827),
+        alignment: Alignment.center,
+        child: const Icon(
+          Icons.videocam_rounded,
+          size: 36,
+          color: Colors.white70,
+        ),
+      );
+    }
+
+    if (media.isLocal && path.isNotEmpty) {
+      return _FileOrPlaceholderImage(path: path, fit: fit);
+    }
+
+    if (path.isNotEmpty) {
+      return _NetworkImage(image: path, fit: fit);
+    }
+
+    return Container(
+      color: const Color(0xFFF3F4F6),
+      alignment: Alignment.center,
+      child: const Icon(
+        Icons.image_not_supported_outlined,
+        color: Color(0xFF9CA3AF),
       ),
     );
   }
@@ -578,6 +627,47 @@ class _NetworkImage extends StatelessWidget {
             width: 18,
             height: 18,
             child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _FileOrPlaceholderImage extends StatelessWidget {
+  const _FileOrPlaceholderImage({
+    required this.path,
+    this.fit = BoxFit.cover,
+  });
+
+  final String path;
+  final BoxFit fit;
+
+  @override
+  Widget build(BuildContext context) {
+    final file = File(path);
+
+    if (!file.existsSync()) {
+      return Container(
+        color: const Color(0xFFF3F4F6),
+        alignment: Alignment.center,
+        child: const Icon(
+          Icons.broken_image_outlined,
+          color: Color(0xFF9CA3AF),
+        ),
+      );
+    }
+
+    return Image.file(
+      file,
+      fit: fit,
+      errorBuilder: (_, __, ___) {
+        return Container(
+          color: const Color(0xFFF3F4F6),
+          alignment: Alignment.center,
+          child: const Icon(
+            Icons.broken_image_outlined,
+            color: Color(0xFF9CA3AF),
           ),
         );
       },

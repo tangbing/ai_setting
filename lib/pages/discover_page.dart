@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/post_model.dart';
+import 'create_post_page.dart';
 import 'post_detail_page.dart';
 import '../providers/discover_provider.dart';
 import '../widgets/discover_tab_chip.dart';
@@ -76,8 +77,10 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
         backgroundColor: const Color(0xFF34C759),
         foregroundColor: Colors.white,
         onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('发帖模块下一步接入')),
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const CreatePostPage(),
+            ),
           );
         },
         child: const Icon(Icons.add_rounded, size: 28),

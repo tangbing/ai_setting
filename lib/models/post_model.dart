@@ -61,6 +61,7 @@ class PostComment {
 class PostMedia {
   const PostMedia.image({
     required this.url,
+    this.isLocal = false,
   })  : type = PostMediaType.image,
         thumbnailUrl = null,
         durationLabel = null;
@@ -69,12 +70,14 @@ class PostMedia {
     required this.url,
     required this.thumbnailUrl,
     required this.durationLabel,
+    this.isLocal = false,
   }) : type = PostMediaType.video;
 
   final PostMediaType type;
   final String url;
   final String? thumbnailUrl;
   final String? durationLabel;
+  final bool isLocal;
 
   bool get isImage => type == PostMediaType.image;
   bool get isVideo => type == PostMediaType.video;

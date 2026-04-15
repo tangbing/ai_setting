@@ -48,6 +48,10 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>需要访问相册以保存帖子图片</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>需要访问相册以保存和查看帖子图片</string>
+	<string>需要访问相册以选择、保存和查看帖子媒体</string>
+	<key>NSCameraUsageDescription</key>
+	<string>需要访问相机以拍摄帖子图片或视频</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>需要访问麦克风以录制帖子视频</string>
 </dict>
 </plist>

@@ -214,6 +214,42 @@ class DiscoverNotifier extends StateNotifier<DiscoverState> {
     state = state.copyWith(posts: updatedPosts);
   }
 
+  void addPost({
+    required String content,
+    required List<PostMedia> media,
+    String? location,
+  }) {
+    final normalizedContent = content.trim();
+    final normalizedLocation = location?.trim();
+
+    final newPost = PostModel(
+      id: 'p${DateTime.now().microsecondsSinceEpoch}',
+      userId: 'current-user',
+      userName: 'You',
+      userAvatar:
+          'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&q=80',
+      createdAt: _formatNow(),
+      content: normalizedContent,
+      media: media,
+      location: (normalizedLocation == null || normalizedLocation.isEmpty)
+          ? null
+          : normalizedLocation,
+      likes: 0,
+      liked: false,
+      views: 0,
+      isHot: false,
+      isFollowingAuthor: true,
+      comments: const [],
+    );
+
+    state = state.copyWith(
+      posts: [newPost, ...state.posts],
+      currentTab: DiscoverTab.newest,
+      visibleCount: _resolveVisibleCount([newPost, ...state.posts], DiscoverTab.newest),
+      clearError: true,
+    );
+  }
+
   int _resolveVisibleCount(List<PostModel> posts, DiscoverTab tab) {
     final filteredLength = _filterPosts(posts, tab).length;
     return filteredLength < _pageSize ? filteredLength : _pageSize;

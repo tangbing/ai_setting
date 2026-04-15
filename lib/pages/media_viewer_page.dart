@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
@@ -103,30 +105,42 @@ class _MediaViewerPageState extends State<MediaViewerPage> {
                       maxScale: 4,
                       child: Hero(
                         tag: 'post-media-${media.url}-$index',
-                        child: Image.network(
-                          media.url,
-                          fit: BoxFit.contain,
-                          loadingBuilder: (context, child, loadingProgress) {
-                            if (loadingProgress == null) {
-                              return child;
-                            }
-                            return const SizedBox(
-                              width: 28,
-                              height: 28,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
+                        child: media.isLocal
+                            ? Image.file(
+                                File(media.url),
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) {
+                                  return const Icon(
+                                    Icons.broken_image_outlined,
+                                    size: 44,
+                                    color: Colors.white54,
+                                  );
+                                },
+                              )
+                            : Image.network(
+                                media.url,
+                                fit: BoxFit.contain,
+                                loadingBuilder: (context, child, loadingProgress) {
+                                  if (loadingProgress == null) {
+                                    return child;
+                                  }
+                                  return const SizedBox(
+                                    width: 28,
+                                    height: 28,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  );
+                                },
+                                errorBuilder: (_, __, ___) {
+                                  return const Icon(
+                                    Icons.broken_image_outlined,
+                                    size: 44,
+                                    color: Colors.white54,
+                                  );
+                                },
                               ),
-                            );
-                          },
-                          errorBuilder: (_, __, ___) {
-                            return const Icon(
-                              Icons.broken_image_outlined,
-                              size: 44,
-                              color: Colors.white54,
-                            );
-                          },
-                        ),
                       ),
                     ),
                   ),
@@ -142,29 +156,30 @@ class _MediaViewerPageState extends State<MediaViewerPage> {
                   IconButton(
                     onPressed: () => Navigator.of(context).maybePop(),
                     icon: const Icon(
-                      Icons.arrow_back_ios_new_rounded,
+                      Icons.close_rounded,
                       color: Colors.white,
                     ),
                   ),
                   const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      '${_currentIndex + 1}/${widget.items.length}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                  if (currentMedia.isImage)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black45,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '${_currentIndex + 1}/${widget.items.length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -215,7 +230,9 @@ class _VideoViewerItemState extends State<_VideoViewerItem> {
   }
 
   Future<void> _initialize() async {
-    final controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+    final controller = widget.url.startsWith('http')
+        ? VideoPlayerController.networkUrl(Uri.parse(widget.url))
+        : VideoPlayerController.file(File(widget.url));
     _controller = controller;
 
     try {
