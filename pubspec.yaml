@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_riverpod: ^2.6.1
   dio: ^5.9.0
+  shared_preferences: ^2.5.3
   gal: ^2.3.2
   video_player: ^2.10.1
   wechat_assets_picker: 9.8.0

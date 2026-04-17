@@ -42,6 +42,25 @@ class ProfileNotifier extends StateNotifier<ProfileState> {
   void setDarkModeEnabled(bool value) {
     state = state.copyWith(isDarkModeEnabled: value);
   }
+
+  void updateFromAuth({
+    required String name,
+    required String userId,
+  }) {
+    state = state.copyWith(
+      name: name,
+      email: 'No email bound',
+      userId: userId,
+    );
+  }
+
+  void resetProfile() {
+    state = state.copyWith(
+      name: '张三',
+      email: 'zhangsan@example.com',
+      userId: '123456789',
+    );
+  }
 }
 
 final profileProvider =

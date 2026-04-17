@@ -267,7 +267,7 @@ class _CreatePostPageState extends ConsumerState<CreatePostPage> {
     });
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     final content = _contentController.text.trim();
     final location = _locationController.text.trim();
     final messenger = ScaffoldMessenger.of(context);
@@ -279,12 +279,11 @@ class _CreatePostPageState extends ConsumerState<CreatePostPage> {
     if (_isSubmitting) {
       return;
     }
-
     setState(() {
       _isSubmitting = true;
     });
 
-    ref.read(discoverProvider.notifier).addPost(
+    final success = await ref.read(discoverProvider.notifier).addPost(
           content: content,
           media: List<PostMedia>.from(_selectedMedia),
           location: location,
@@ -294,10 +293,18 @@ class _CreatePostPageState extends ConsumerState<CreatePostPage> {
       return;
     }
 
+    setState(() {
+      _isSubmitting = false;
+    });
+
+    if (!success) {
+      final errorMessage = ref.read(discoverProvider).errorMessage;
+      _showMessage(errorMessage ?? '发布失败，请稍后重试');
+      return;
+    }
+
     Navigator.of(context).pop();
-    messenger.showSnackBar(
-      const SnackBar(content: Text('发布成功')),
-    );
+    messenger.showSnackBar(const SnackBar(content: Text('发布成功')));
   }
 
   void _showMessage(String message) {

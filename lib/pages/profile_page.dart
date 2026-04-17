@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../providers/auth_provider.dart';
 import '../providers/profile_provider.dart';
 import '../widgets/profile_action_tile.dart';
 import '../widgets/profile_stat_card.dart';
@@ -37,24 +38,27 @@ class ProfilePage extends ConsumerWidget {
                             style: theme.textTheme.titleSmall,
                           ),
                           const SizedBox(height: 8),
-                          const ProfileStatCard(
+                          ProfileStatCard(
                             child: Column(
                               children: [
                                 ProfileActionTile(
                                   icon: Icons.notifications_none_rounded,
                                   iconBackgroundColor: Color(0xFFFF3B30),
                                   title: '通知设置',
+                                  onTap: () => _showPlaceholder(context, '通知设置'),
                                 ),
                                 ProfileActionTile(
                                   icon: Icons.lock_outline_rounded,
                                   iconBackgroundColor: Color(0xFF007AFF),
                                   title: '隐私与安全',
+                                  onTap: () => _showPlaceholder(context, '隐私与安全'),
                                 ),
                                 ProfileActionTile(
                                   icon: Icons.language_rounded,
                                   iconBackgroundColor: Color(0xFF34C759),
                                   title: '语言设置',
                                   showDivider: false,
+                                  onTap: () => _showPlaceholder(context, '语言设置'),
                                 ),
                               ],
                             ),
@@ -91,13 +95,14 @@ class ProfilePage extends ConsumerWidget {
                             style: theme.textTheme.titleSmall,
                           ),
                           const SizedBox(height: 8),
-                          const ProfileStatCard(
+                          ProfileStatCard(
                             child: Column(
                               children: [
                                 ProfileActionTile(
                                   icon: Icons.help_outline_rounded,
                                   iconBackgroundColor: Color(0xFFFF9500),
                                   title: '帮助中心',
+                                  onTap: () => _showPlaceholder(context, '帮助中心'),
                                 ),
                                 ProfileActionTile(
                                   icon: Icons.logout_rounded,
@@ -105,6 +110,10 @@ class ProfilePage extends ConsumerWidget {
                                   title: '退出登录',
                                   titleColor: Color(0xFFD70015),
                                   showDivider: false,
+                                  onTap: () {
+                                    ref.read(authProvider.notifier).logout();
+                                    ref.read(profileProvider.notifier).resetProfile();
+                                  },
                                 ),
                               ],
                             ),
@@ -121,6 +130,12 @@ class ProfilePage extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+
+  void _showPlaceholder(BuildContext context, String title) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$title 功能暂未开放')),
     );
   }
 }

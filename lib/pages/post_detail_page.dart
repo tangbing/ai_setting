@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -25,10 +27,12 @@ class _PostDetailPageState extends ConsumerState<PostDetailPage> {
   final TextEditingController _replyController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   PostComment? _replyTarget;
+  bool _isBootstrapping = true;
 
   @override
   void initState() {
     super.initState();
+    unawaited(_loadPostData());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (widget.jumpToComments) {
         _scrollToComments();
@@ -42,6 +46,24 @@ class _PostDetailPageState extends ConsumerState<PostDetailPage> {
     _replyController.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadPostData() async {
+    await Future.wait<void>([
+      ref.read(discoverProvider.notifier).loadPostDetail(
+            widget.postId,
+            incrementView: true,
+          ),
+      ref.read(discoverProvider.notifier).loadComments(widget.postId),
+    ]);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isBootstrapping = false;
+    });
   }
 
   void _scrollToComments() {
@@ -71,18 +93,21 @@ class _PostDetailPageState extends ConsumerState<PostDetailPage> {
     });
   }
 
-  void _submitReply() {
+  Future<void> _submitReply() async {
     final text = _replyController.text.trim();
     if (text.isEmpty) {
       return;
     }
 
-    ref.read(discoverProvider.notifier).addComment(
+    final success = await ref.read(discoverProvider.notifier).addComment(
           widget.postId,
           content: text,
           parentCommentId: _replyTarget?.id,
-          replyToName: _replyTarget?.userName,
         );
+
+    if (!mounted || !success) {
+      return;
+    }
 
     _replyController.clear();
     _focusNode.unfocus();
@@ -100,11 +125,13 @@ class _PostDetailPageState extends ConsumerState<PostDetailPage> {
     if (post == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('帖子详情')),
-        body: const Center(
-          child: Text(
-            '帖子不存在或已删除',
-            style: TextStyle(fontSize: 15, color: Color(0xFF6B7280)),
-          ),
+        body: Center(
+          child: _isBootstrapping
+              ? const CircularProgressIndicator()
+              : const Text(
+                  '帖子不存在或已删除',
+                  style: TextStyle(fontSize: 15, color: Color(0xFF6B7280)),
+                ),
         ),
       );
     }
@@ -123,9 +150,7 @@ class _PostDetailPageState extends ConsumerState<PostDetailPage> {
         children: [
           PostCard(
             post: post,
-            onLikeTap: () {
-              ref.read(discoverProvider.notifier).toggleLike(post.id);
-            },
+            onLikeTap: () => ref.read(discoverProvider.notifier).toggleLike(post.id),
             onCommentTap: _scrollToComments,
             onPostTap: () {},
           ),
@@ -182,7 +207,7 @@ class _PostDetailPageState extends ConsumerState<PostDetailPage> {
                         minLines: 1,
                         maxLines: 4,
                         textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _submitReply(),
+                        onSubmitted: (_) => unawaited(_submitReply()),
                         decoration: InputDecoration(
                           hintText: _replyTarget == null
                               ? 'Enter your reply'
@@ -202,7 +227,7 @@ class _PostDetailPageState extends ConsumerState<PostDetailPage> {
                     ),
                     const SizedBox(width: 12),
                     FilledButton(
-                      onPressed: _submitReply,
+                      onPressed: () => unawaited(_submitReply()),
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFF34C759),
                         foregroundColor: Colors.white,

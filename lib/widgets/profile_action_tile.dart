@@ -9,6 +9,7 @@ class ProfileActionTile extends StatelessWidget {
     this.titleColor = const Color(0xFF111827),
     this.trailing,
     this.showDivider = true,
+    this.onTap,
   });
 
   final IconData icon;
@@ -17,6 +18,7 @@ class ProfileActionTile extends StatelessWidget {
   final Color titleColor;
   final Widget? trailing;
   final bool showDivider;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -24,36 +26,42 @@ class ProfileActionTile extends StatelessWidget {
       children: [
         SizedBox(
           height: 50,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Container(
-                  height: 28,
-                  width: 28,
-                  decoration: BoxDecoration(
-                    color: iconBackgroundColor,
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: Icon(icon, color: Colors.white, size: 18),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 17,
-                      color: titleColor,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Container(
+                      height: 28,
+                      width: 28,
+                      decoration: BoxDecoration(
+                        color: iconBackgroundColor,
+                        borderRadius: BorderRadius.circular(7),
+                      ),
+                      child: Icon(icon, color: Colors.white, size: 18),
                     ),
-                  ),
-                ),
-                trailing ??
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      size: 22,
-                      color: Color(0xFFC7C7CC),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 17,
+                          color: titleColor,
+                        ),
+                      ),
                     ),
-              ],
+                    trailing ??
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          size: 22,
+                          color: Color(0xFFC7C7CC),
+                        ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),

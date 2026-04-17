@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'pages/app_shell_page.dart';
+import 'pages/auth_page.dart';
+import 'providers/auth_provider.dart';
+import 'providers/profile_provider.dart';
 
 void main() {
   runApp(const ProviderScope(child: MyApp()));
@@ -58,7 +61,45 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const AppShellPage(),
+      home: const _AppEntry(),
     );
+  }
+}
+
+class _AppEntry extends ConsumerWidget {
+  const _AppEntry();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(authProvider);
+
+    ref.listen<AuthState>(authProvider, (previous, next) {
+      final nextSession = next.session;
+      if (nextSession != null && previous?.session != nextSession) {
+        ref.read(profileProvider.notifier).updateFromAuth(
+              name: nextSession.user.userName,
+              userId: nextSession.user.userId.toString(),
+            );
+        return;
+      }
+
+      if (nextSession == null && previous?.session != null) {
+        ref.read(profileProvider.notifier).resetProfile();
+      }
+    });
+
+    if (authState.isInitializing) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (!authState.isAuthenticated) {
+      return const AuthPage();
+    }
+
+    return const AppShellPage();
   }
 }

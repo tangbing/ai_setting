@@ -2,15 +2,16 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/network/api_client.dart';
 import '../models/post_model.dart';
-
-const _pageSize = 3;
+import '../services/post_service.dart';
+import 'auth_provider.dart';
 
 class DiscoverState {
   const DiscoverState({
     required this.posts,
     required this.currentTab,
-    required this.visibleCount,
+    required this.nextCursor,
     required this.isLoading,
     required this.isRefreshing,
     required this.isLoadingMore,
@@ -19,35 +20,21 @@ class DiscoverState {
 
   final List<PostModel> posts;
   final DiscoverTab currentTab;
-  final int visibleCount;
+  final String? nextCursor;
   final bool isLoading;
   final bool isRefreshing;
   final bool isLoadingMore;
   final String? errorMessage;
 
-  List<PostModel> get filteredPosts {
-    switch (currentTab) {
-      case DiscoverTab.newest:
-        return posts;
-      case DiscoverTab.hot:
-        return posts.where((post) => post.isHot).toList();
-      case DiscoverTab.following:
-        return posts.where((post) => post.isFollowingAuthor).toList();
-    }
-  }
-
-  List<PostModel> get visiblePosts {
-    final target = visibleCount.clamp(0, filteredPosts.length) as int;
-    return filteredPosts.take(target).toList();
-  }
-
-  bool get hasMore => visibleCount < filteredPosts.length;
-  bool get isEmpty => !isLoading && errorMessage == null && filteredPosts.isEmpty;
+  List<PostModel> get visiblePosts => posts;
+  bool get hasMore => nextCursor != null;
+  bool get isEmpty => !isLoading && errorMessage == null && posts.isEmpty;
 
   DiscoverState copyWith({
     List<PostModel>? posts,
     DiscoverTab? currentTab,
-    int? visibleCount,
+    String? nextCursor,
+    bool clearCursor = false,
     bool? isLoading,
     bool? isRefreshing,
     bool? isLoadingMore,
@@ -57,7 +44,7 @@ class DiscoverState {
     return DiscoverState(
       posts: posts ?? this.posts,
       currentTab: currentTab ?? this.currentTab,
-      visibleCount: visibleCount ?? this.visibleCount,
+      nextCursor: clearCursor ? null : nextCursor ?? this.nextCursor,
       isLoading: isLoading ?? this.isLoading,
       isRefreshing: isRefreshing ?? this.isRefreshing,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
@@ -69,7 +56,7 @@ class DiscoverState {
     return const DiscoverState(
       posts: [],
       currentTab: DiscoverTab.newest,
-      visibleCount: _pageSize,
+      nextCursor: null,
       isLoading: true,
       isRefreshing: false,
       isLoadingMore: false,
@@ -79,197 +66,372 @@ class DiscoverState {
 }
 
 class DiscoverNotifier extends StateNotifier<DiscoverState> {
-  DiscoverNotifier() : super(DiscoverState.initial()) {
-    loadInitialPosts();
+  DiscoverNotifier(this._postService) : super(DiscoverState.initial()) {
+    unawaited(loadInitialPosts());
   }
+
+  final PostService _postService;
 
   Future<void> loadInitialPosts() async {
     state = state.copyWith(
       isLoading: true,
       clearError: true,
-      visibleCount: _pageSize,
+      clearCursor: true,
     );
 
     try {
-      await Future<void>.delayed(const Duration(milliseconds: 250));
-      final posts = _buildMockPosts();
+      final page = await _postService.listPosts(feed: state.currentTab);
       state = state.copyWith(
-        posts: posts,
+        posts: page.items,
+        nextCursor: page.nextCursor,
         isLoading: false,
-        visibleCount: _resolveVisibleCount(posts, state.currentTab),
         clearError: true,
       );
-    } catch (_) {
+    } catch (error) {
       state = state.copyWith(
         isLoading: false,
-        errorMessage: '帖子加载失败，请重试',
+        posts: const [],
+        errorMessage: error.toString(),
+        clearCursor: true,
       );
     }
   }
 
-  void switchTab(DiscoverTab tab) {
-    if (tab == state.currentTab) {
+  Future<void> switchTab(DiscoverTab tab) async {
+    if (tab == state.currentTab && state.posts.isNotEmpty) {
       return;
     }
+
     state = state.copyWith(
       currentTab: tab,
-      visibleCount: _resolveVisibleCount(state.posts, tab),
+      isLoading: true,
+      posts: const [],
       clearError: true,
+      clearCursor: true,
     );
+
+    try {
+      final page = await _postService.listPosts(feed: tab);
+      state = state.copyWith(
+        posts: page.items,
+        nextCursor: page.nextCursor,
+        isLoading: false,
+        clearError: true,
+      );
+    } catch (error) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: error.toString(),
+        clearCursor: true,
+      );
+    }
   }
 
   Future<void> refresh() async {
     state = state.copyWith(isRefreshing: true, clearError: true);
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-
-    final refreshedPosts = [
-      ...state.posts.where((post) => post.id != 'refresh-banner'),
-    ];
-
-    state = state.copyWith(
-      posts: [
-        _buildRefreshHighlightPost(),
-        ...refreshedPosts,
-      ],
-      isRefreshing: false,
-      visibleCount: _resolveVisibleCount(
-        [_buildRefreshHighlightPost(), ...refreshedPosts],
-        state.currentTab,
-      ),
-    );
+    try {
+      final page = await _postService.listPosts(feed: state.currentTab);
+      state = state.copyWith(
+        posts: page.items,
+        nextCursor: page.nextCursor,
+        isRefreshing: false,
+        clearError: true,
+      );
+    } catch (error) {
+      state = state.copyWith(
+        isRefreshing: false,
+        errorMessage: error.toString(),
+      );
+    }
   }
 
   Future<void> loadMore() async {
-    if (state.isLoadingMore || state.isLoading || !state.hasMore) {
+    if (state.isLoadingMore || state.isLoading || state.nextCursor == null) {
       return;
     }
 
     state = state.copyWith(isLoadingMore: true);
-    await Future<void>.delayed(const Duration(milliseconds: 350));
-
-    state = state.copyWith(
-      isLoadingMore: false,
-      visibleCount:
-          (state.visibleCount + _pageSize).clamp(0, state.filteredPosts.length)
-              as int,
-    );
+    try {
+      final page = await _postService.listPosts(
+        feed: state.currentTab,
+        cursor: state.nextCursor,
+      );
+      state = state.copyWith(
+        posts: [...state.posts, ...page.items],
+        nextCursor: page.nextCursor,
+        isLoadingMore: false,
+      );
+    } catch (error) {
+      state = state.copyWith(
+        isLoadingMore: false,
+        errorMessage: error.toString(),
+      );
+    }
   }
 
   void retry() {
     unawaited(loadInitialPosts());
   }
 
-  void toggleLike(String postId) {
-    final updatedPosts = state.posts.map((post) {
-      if (post.id != postId) {
-        return post;
-      }
-      return post.copyWith(
-        liked: !post.liked,
-        likes: post.liked ? post.likes - 1 : post.likes + 1,
-      );
-    }).toList();
+  Future<void> toggleLike(String postId) async {
+    final target = _findPost(postId);
+    if (target == null) {
+      return;
+    }
 
-    state = state.copyWith(posts: updatedPosts);
-  }
-
-  void addComment(
-    String postId, {
-    required String content,
-    String? parentCommentId,
-    String? replyToName,
-  }) {
-    final newComment = PostComment(
-      id: 'c${DateTime.now().microsecondsSinceEpoch}',
-      userId: 'current-user',
-      userName: 'You',
-      content: content,
-      createdAt: _formatNow(),
-      parentId: parentCommentId,
-      replyToName: replyToName,
-      level: parentCommentId == null ? 1 : 2,
-      replies: const [],
+    final optimistic = target.copyWith(
+      liked: !target.liked,
+      likes: target.liked ? target.likes - 1 : target.likes + 1,
     );
+    _replacePost(optimistic);
 
-    final updatedPosts = state.posts.map((post) {
-      if (post.id != postId) {
-        return post;
+    try {
+      if (target.liked) {
+        await _postService.unlikePost(postId);
+      } else {
+        final likeCount = await _postService.likePost(postId);
+        _replacePost(optimistic.copyWith(likes: likeCount));
       }
-
-      if (parentCommentId == null) {
-        return post.copyWith(
-          comments: [newComment, ...post.comments],
-        );
-      }
-
-      final result = _insertReply(
-        comments: post.comments,
-        targetCommentId: parentCommentId,
-        newComment: newComment,
-      );
-
-      return post.copyWith(comments: result.comments);
-    }).toList();
-
-    state = state.copyWith(posts: updatedPosts);
+    } catch (error) {
+      _replacePost(target);
+      state = state.copyWith(errorMessage: error.toString());
+    }
   }
 
-  void addPost({
+  Future<bool> addPost({
     required String content,
     required List<PostMedia> media,
     String? location,
-  }) {
-    final normalizedContent = content.trim();
-    final normalizedLocation = location?.trim();
+  }) async {
+    try {
+      final hasVideo = media.any((item) => item.isVideo);
+      if (hasVideo) {
+        throw '当前后端还未接通视频上传，请先发布文字或图片帖子';
+      }
 
-    final newPost = PostModel(
-      id: 'p${DateTime.now().microsecondsSinceEpoch}',
-      userId: 'current-user',
-      userName: 'You',
-      userAvatar:
-          'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&q=80',
-      createdAt: _formatNow(),
-      content: normalizedContent,
-      media: media,
-      location: (normalizedLocation == null || normalizedLocation.isEmpty)
-          ? null
-          : normalizedLocation,
-      likes: 0,
-      liked: false,
-      views: 0,
-      isHot: false,
-      isFollowingAuthor: true,
-      comments: const [],
-    );
+      final preparedMedia = await _postService.uploadLocalImages(media);
+      final created = await _postService.createPost(
+        content: content,
+        media: preparedMedia,
+        location: location,
+      );
 
-    state = state.copyWith(
-      posts: [newPost, ...state.posts],
-      currentTab: DiscoverTab.newest,
-      visibleCount: _resolveVisibleCount([newPost, ...state.posts], DiscoverTab.newest),
-      clearError: true,
-    );
-  }
+      final updatedPosts = state.currentTab == DiscoverTab.newest
+          ? [created, ...state.posts]
+          : state.posts;
 
-  int _resolveVisibleCount(List<PostModel> posts, DiscoverTab tab) {
-    final filteredLength = _filterPosts(posts, tab).length;
-    return filteredLength < _pageSize ? filteredLength : _pageSize;
-  }
-
-  List<PostModel> _filterPosts(List<PostModel> posts, DiscoverTab tab) {
-    switch (tab) {
-      case DiscoverTab.newest:
-        return posts;
-      case DiscoverTab.hot:
-        return posts.where((post) => post.isHot).toList();
-      case DiscoverTab.following:
-        return posts.where((post) => post.isFollowingAuthor).toList();
+      state = state.copyWith(
+        posts: updatedPosts,
+        clearError: true,
+      );
+      return true;
+    } catch (error) {
+      state = state.copyWith(errorMessage: error.toString());
+      return false;
     }
+  }
+
+  Future<void> loadPostDetail(
+    String postId, {
+    bool incrementView = false,
+  }) async {
+    try {
+      if (incrementView) {
+        unawaited(_postService.incrementView(postId));
+      }
+      final detail = await _postService.getPost(postId);
+      final existing = _findPost(postId);
+      _replaceOrInsertPost(
+        existing == null ? detail : detail.copyWith(comments: existing.comments),
+      );
+    } catch (error) {
+      state = state.copyWith(errorMessage: error.toString());
+    }
+  }
+
+  Future<void> loadComments(String postId) async {
+    try {
+      final comments = await _postService.listComments(postId);
+      final target = _findPost(postId);
+      if (target == null) {
+        return;
+      }
+      _replacePost(
+        target.copyWith(
+          comments: comments,
+          commentCount: _countComments(comments),
+        ),
+      );
+    } catch (error) {
+      state = state.copyWith(errorMessage: error.toString());
+    }
+  }
+
+  Future<bool> addComment(
+    String postId, {
+    required String content,
+    String? parentCommentId,
+  }) async {
+    try {
+      if (parentCommentId == null) {
+        await _postService.createComment(postId: postId, content: content);
+      } else {
+        await _postService.replyComment(commentId: parentCommentId, content: content);
+      }
+
+      await Future.wait<void>([
+        loadPostDetail(postId),
+        loadComments(postId),
+      ]);
+      return true;
+    } catch (error) {
+      state = state.copyWith(errorMessage: error.toString());
+      return false;
+    }
+  }
+
+  Future<void> toggleCommentLike({
+    required String postId,
+    required String commentId,
+  }) async {
+    final target = _findComment(postId: postId, commentId: commentId);
+    if (target == null) {
+      return;
+    }
+
+    final updatedComments = _mapCommentTree(
+      comments: _findPost(postId)?.comments ?? const [],
+      commentId: commentId,
+      transform: (comment) => comment.copyWith(
+        liked: !comment.liked,
+        likeCount: comment.liked ? comment.likeCount - 1 : comment.likeCount + 1,
+      ),
+    );
+    _replaceComments(postId, updatedComments);
+
+    try {
+      if (target.liked) {
+        await _postService.unlikeComment(commentId);
+      } else {
+        final likeCount = await _postService.likeComment(commentId);
+        final syncedComments = _mapCommentTree(
+          comments: _findPost(postId)?.comments ?? const [],
+          commentId: commentId,
+          transform: (comment) => comment.copyWith(
+            liked: true,
+            likeCount: likeCount,
+          ),
+        );
+        _replaceComments(postId, syncedComments);
+      }
+    } catch (error) {
+      await loadComments(postId);
+      state = state.copyWith(errorMessage: error.toString());
+    }
+  }
+
+  PostModel? _findPost(String postId) {
+    for (final post in state.posts) {
+      if (post.id == postId) {
+        return post;
+      }
+    }
+    return null;
+  }
+
+  PostComment? _findComment({
+    required String postId,
+    required String commentId,
+  }) {
+    final comments = _findPost(postId)?.comments ?? const <PostComment>[];
+    return _walkComments(comments, commentId);
+  }
+
+  PostComment? _walkComments(List<PostComment> comments, String commentId) {
+    for (final comment in comments) {
+      if (comment.id == commentId) {
+        return comment;
+      }
+      final nested = _walkComments(comment.replies, commentId);
+      if (nested != null) {
+        return nested;
+      }
+    }
+    return null;
+  }
+
+  void _replacePost(PostModel updatedPost) {
+    state = state.copyWith(
+      posts: [
+        for (final post in state.posts)
+          if (post.id == updatedPost.id) updatedPost else post,
+      ],
+    );
+  }
+
+  void _replaceOrInsertPost(PostModel post) {
+    final existingIndex = state.posts.indexWhere((item) => item.id == post.id);
+    if (existingIndex == -1) {
+      state = state.copyWith(posts: [post, ...state.posts]);
+      return;
+    }
+
+    final updatedPosts = [...state.posts];
+    updatedPosts[existingIndex] = post;
+    state = state.copyWith(posts: updatedPosts);
+  }
+
+  void _replaceComments(String postId, List<PostComment> comments) {
+    final target = _findPost(postId);
+    if (target == null) {
+      return;
+    }
+    _replacePost(
+      target.copyWith(
+        comments: comments,
+        commentCount: _countComments(comments),
+      ),
+    );
+  }
+
+  List<PostComment> _mapCommentTree({
+    required List<PostComment> comments,
+    required String commentId,
+    required PostComment Function(PostComment comment) transform,
+  }) {
+    return comments.map((comment) {
+      if (comment.id == commentId) {
+        return transform(comment);
+      }
+      if (comment.replies.isEmpty) {
+        return comment;
+      }
+      return comment.copyWith(
+        replies: _mapCommentTree(
+          comments: comment.replies,
+          commentId: commentId,
+          transform: transform,
+        ),
+      );
+    }).toList();
+  }
+
+  int _countComments(List<PostComment> comments) {
+    var count = 0;
+    for (final comment in comments) {
+      count += comment.totalCount;
+    }
+    return count;
   }
 }
 
+final postServiceProvider = Provider<PostService>((ref) {
+  return PostService(apiClient: ref.watch(apiClientProvider));
+});
+
 final discoverProvider =
     StateNotifierProvider<DiscoverNotifier, DiscoverState>((ref) {
-  return DiscoverNotifier();
+  return DiscoverNotifier(ref.watch(postServiceProvider));
 });
 
 final postByIdProvider = Provider.family<PostModel?, String>((ref, postId) {
@@ -281,415 +443,3 @@ final postByIdProvider = Provider.family<PostModel?, String>((ref, postId) {
   }
   return null;
 });
-
-String _formatNow() {
-  final now = DateTime.now();
-  final month = now.month.toString().padLeft(2, '0');
-  final day = now.day.toString().padLeft(2, '0');
-  final hour = now.hour.toString().padLeft(2, '0');
-  final minute = now.minute.toString().padLeft(2, '0');
-  return '$month/$day $hour:$minute';
-}
-
-_CommentInsertResult _insertReply({
-  required List<PostComment> comments,
-  required String targetCommentId,
-  required PostComment newComment,
-}) {
-  var insertedAtThisLevel = false;
-  var insertedAnywhere = false;
-  final updated = <PostComment>[];
-
-  for (final comment in comments) {
-    if (comment.id == targetCommentId) {
-      insertedAnywhere = true;
-
-      if (comment.level < 2) {
-        updated.add(
-          comment.copyWith(
-            replies: [
-              ...comment.replies,
-              newComment.copyWith(
-                level: comment.level + 1,
-                parentId: comment.id,
-                replyToName: comment.userName,
-              ),
-            ],
-          ),
-        );
-      } else {
-        insertedAtThisLevel = true;
-        updated.add(comment);
-      }
-      continue;
-    }
-
-    if (comment.replies.isEmpty) {
-      updated.add(comment);
-      continue;
-    }
-
-    final nested = _insertReply(
-      comments: comment.replies,
-      targetCommentId: targetCommentId,
-      newComment: newComment,
-    );
-
-    if (nested.insertedAnywhere) {
-      insertedAnywhere = true;
-      updated.add(comment.copyWith(replies: nested.comments));
-      if (nested.insertedAtThisLevel) {
-        updated.add(
-          newComment.copyWith(
-            level: 2,
-            parentId: comment.id,
-            replyToName: nested.targetUserName,
-          ),
-        );
-      }
-      continue;
-    }
-
-    updated.add(comment);
-  }
-
-  return _CommentInsertResult(
-    comments: updated,
-    insertedAnywhere: insertedAnywhere,
-    insertedAtThisLevel: insertedAtThisLevel,
-    targetUserName: _findTargetUserName(comments, targetCommentId),
-  );
-}
-
-String? _findTargetUserName(List<PostComment> comments, String targetCommentId) {
-  for (final comment in comments) {
-    if (comment.id == targetCommentId) {
-      return comment.userName;
-    }
-    if (comment.replies.isNotEmpty) {
-      final nested = _findTargetUserName(comment.replies, targetCommentId);
-      if (nested != null) {
-        return nested;
-      }
-    }
-  }
-  return null;
-}
-
-class _CommentInsertResult {
-  const _CommentInsertResult({
-    required this.comments,
-    required this.insertedAnywhere,
-    required this.insertedAtThisLevel,
-    required this.targetUserName,
-  });
-
-  final List<PostComment> comments;
-  final bool insertedAnywhere;
-  final bool insertedAtThisLevel;
-  final String? targetUserName;
-}
-
-PostModel _buildRefreshHighlightPost() {
-  return const PostModel(
-    id: 'refresh-banner',
-    userId: 'refresh-user',
-    userName: 'Assembly Official',
-    userAvatar:
-        'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=120&q=80',
-    createdAt: '刚刚',
-    content: '下拉刷新成功，帖子流已更新。这里保留了后续接真实接口时的刷新位置。',
-    media: [],
-    location: 'Discover Feed',
-    likes: 12,
-    liked: false,
-    views: 328,
-    isHot: false,
-    isFollowingAuthor: true,
-    comments: [
-      PostComment(
-        id: 'refresh-comment',
-        userId: 'refresh-comment-user',
-        userName: 'System',
-        content: '刷新演示数据',
-        createdAt: '刚刚',
-        level: 1,
-      ),
-    ],
-  );
-}
-
-List<PostModel> _buildMockPosts() {
-  return const [
-    PostModel(
-      id: '1',
-      userId: '1',
-      userName: 'As wl wr wb',
-      userAvatar:
-          'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&q=80',
-      createdAt: '04/12 22:28',
-      content: '这是一个美好的一天，分享一些生活中的美好瞬间 ✨',
-      media: [
-        PostMedia.image(
-          url:
-              'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&q=80',
-        ),
-        PostMedia.image(
-          url:
-              'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=800&q=80',
-        ),
-        PostMedia.image(
-          url:
-              'https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?w=800&q=80',
-        ),
-      ],
-      location: 'Ethiopia',
-      likes: 2,
-      liked: false,
-      views: 586,
-      isHot: false,
-      isFollowingAuthor: true,
-      comments: [
-        PostComment(
-          id: '1-1',
-          userId: 'c-1',
-          userName: 'Lina',
-          content: '这组照片很有氛围感',
-          createdAt: '04/12 23:01',
-          level: 1,
-          replies: [
-            PostComment(
-              id: '1-1-1',
-              userId: 'c-12',
-              userName: 'Hiba',
-              content: '尤其是第一张的天空层次，我也喜欢这种颜色过渡',
-              createdAt: '04/12 23:18',
-              parentId: '1-1',
-              replyToName: 'Lina',
-              level: 2,
-            ),
-          ],
-        ),
-      ],
-    ),
-    PostModel(
-      id: '2',
-      userId: '2',
-      userName: 'Bareera jan',
-      userAvatar:
-          'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=120&q=80',
-      createdAt: '04/12 22:28',
-      content:
-          'Sura ق وَمَا خَلَقْنَا السَّمَاء وَالْأَرْضَ وَمَا بَيْنَهُمَا لَاعِبِينَ',
-      media: [
-        PostMedia.image(
-          url:
-              'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=800&q=80',
-        ),
-        PostMedia.image(
-          url:
-              'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&q=80',
-        ),
-      ],
-      location: 'Anantnag, India',
-      likes: 1,
-      liked: false,
-      views: 1020,
-      isHot: true,
-      isFollowingAuthor: false,
-      comments: [
-        PostComment(
-          id: '2-1',
-          userId: 'c-2',
-          userName: 'Nadia',
-          content: '这句摘录很有力量',
-          createdAt: '04/12 22:48',
-          level: 1,
-        ),
-        PostComment(
-          id: '2-2',
-          userId: 'c-3',
-          userName: 'Yusuf',
-          content: '收藏了',
-          createdAt: '04/12 23:04',
-          level: 1,
-        ),
-      ],
-    ),
-    PostModel(
-      id: '3',
-      userId: '3',
-      userName: 'Muhammad abdullah',
-      userAvatar:
-          'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&q=80',
-      createdAt: '04/12 08:50',
-      content: 'ma sa allah 🌻🤲',
-      media: [
-        PostMedia.image(
-          url:
-              'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=800&q=80',
-        ),
-        PostMedia.image(
-          url:
-              'https://images.unsplash.com/photo-1426604966848-d7adac402bff?w=800&q=80',
-        ),
-        PostMedia.image(
-          url:
-              'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&q=80',
-        ),
-        PostMedia.image(
-          url:
-              'https://images.unsplash.com/photo-1476820865390-c52aeebb9891?w=800&q=80',
-        ),
-      ],
-      location: 'Dubai, UAE',
-      likes: 15,
-      liked: false,
-      views: 2340,
-      isHot: true,
-      isFollowingAuthor: true,
-      comments: [
-        PostComment(
-          id: '3-1',
-          userId: 'c-4',
-          userName: 'Hana',
-          content: '第四张图光影很好',
-          createdAt: '04/12 09:03',
-          level: 1,
-        ),
-        PostComment(
-          id: '3-2',
-          userId: 'c-5',
-          userName: 'Rafi',
-          content: '风景太舒服了',
-          createdAt: '04/12 09:25',
-          level: 1,
-        ),
-        PostComment(
-          id: '3-3',
-          userId: 'c-6',
-          userName: 'Ali',
-          content: '这组值得置顶',
-          createdAt: '04/12 10:02',
-          level: 1,
-        ),
-      ],
-    ),
-    PostModel(
-      id: '4',
-      userId: '4',
-      userName: 'Qehvgd',
-      userAvatar:
-          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&q=80',
-      createdAt: '04/08 05:43',
-      content: 'حياة❤️',
-      media: [
-        PostMedia.image(
-          url:
-              'https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=800&q=80',
-        ),
-        PostMedia.image(
-          url:
-              'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=800&q=80',
-        ),
-      ],
-      location: 'Paris, France',
-      likes: 1,
-      liked: false,
-      views: 1800,
-      isHot: true,
-      isFollowingAuthor: false,
-      comments: [
-        PostComment(
-          id: '4-1',
-          userId: 'c-7',
-          userName: 'sammy Amen',
-          content: '🇪🇬 🤞 😘',
-          createdAt: '04/10 20:06',
-          level: 1,
-        ),
-      ],
-    ),
-    PostModel(
-      id: '5',
-      userId: '5',
-      userName: 'Nour Ahmed',
-      userAvatar:
-          'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=120&q=80',
-      createdAt: '04/07 14:12',
-      content: '新的学习角落布置好了，准备把这一周的想法都整理下来。',
-      media: [
-        PostMedia.image(
-          url:
-              'https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=800&q=80',
-        ),
-      ],
-      location: 'Cairo, Egypt',
-      likes: 28,
-      liked: true,
-      views: 6400,
-      isHot: true,
-      isFollowingAuthor: true,
-      comments: [
-        PostComment(
-          id: '5-1',
-          userId: 'c-8',
-          userName: 'Mona',
-          content: '桌面配色很干净',
-          createdAt: '04/07 15:09',
-          level: 1,
-        ),
-        PostComment(
-          id: '5-2',
-          userId: 'c-9',
-          userName: 'Omar',
-          content: '求分享书架清单',
-          createdAt: '04/07 16:18',
-          level: 1,
-        ),
-      ],
-    ),
-    PostModel(
-      id: '6',
-      userId: '6',
-      userName: 'Safa Noor',
-      userAvatar:
-          'https://images.unsplash.com/photo-1504593811423-6dd665756598?w=120&q=80',
-      createdAt: '04/05 19:40',
-      content: '把昨天拍到的街角晚风剪成了一段短片，灯光亮起的时候刚好很安静。',
-      media: [
-        PostMedia.video(
-          url:
-              'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
-          thumbnailUrl:
-              'https://images.unsplash.com/photo-1519608487953-e999c86e7455?w=1200&q=80',
-          durationLabel: '00:18',
-        ),
-      ],
-      location: 'Istanbul, Turkey',
-      likes: 36,
-      liked: false,
-      views: 4820,
-      isHot: true,
-      isFollowingAuthor: true,
-      comments: [
-        PostComment(
-          id: '6-1',
-          userId: 'c-10',
-          userName: 'Noor',
-          content: '这个镜头切得很舒服',
-          createdAt: '04/05 20:03',
-          level: 1,
-        ),
-        PostComment(
-          id: '6-2',
-          userId: 'c-11',
-          userName: 'Mariam',
-          content: '色调很电影感',
-          createdAt: '04/05 20:11',
-          level: 1,
-        ),
-      ],
-    ),
-  ];
-}

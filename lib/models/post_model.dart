@@ -9,9 +9,12 @@ class PostComment {
     required this.userName,
     required this.content,
     required this.createdAt,
+    this.userAvatar,
     this.parentId,
     this.replyToName,
     this.level = 1,
+    this.likeCount = 0,
+    this.liked = false,
     this.replies = const [],
   });
 
@@ -20,9 +23,12 @@ class PostComment {
   final String userName;
   final String content;
   final String createdAt;
+  final String? userAvatar;
   final String? parentId;
   final String? replyToName;
   final int level;
+  final int likeCount;
+  final bool liked;
   final List<PostComment> replies;
 
   int get totalCount {
@@ -39,9 +45,12 @@ class PostComment {
     String? userName,
     String? content,
     String? createdAt,
+    String? userAvatar,
     String? parentId,
     String? replyToName,
     int? level,
+    int? likeCount,
+    bool? liked,
     List<PostComment>? replies,
   }) {
     return PostComment(
@@ -50,9 +59,12 @@ class PostComment {
       userName: userName ?? this.userName,
       content: content ?? this.content,
       createdAt: createdAt ?? this.createdAt,
+      userAvatar: userAvatar ?? this.userAvatar,
       parentId: parentId ?? this.parentId,
       replyToName: replyToName ?? this.replyToName,
       level: level ?? this.level,
+      likeCount: likeCount ?? this.likeCount,
+      liked: liked ?? this.liked,
       replies: replies ?? this.replies,
     );
   }
@@ -96,6 +108,7 @@ class PostModel {
     required this.likes,
     required this.liked,
     required this.views,
+    required this.commentCount,
     required this.isHot,
     required this.isFollowingAuthor,
     required this.comments,
@@ -112,17 +125,10 @@ class PostModel {
   final int likes;
   final bool liked;
   final int views;
+  final int commentCount;
   final bool isHot;
   final bool isFollowingAuthor;
   final List<PostComment> comments;
-
-  int get commentCount {
-    var count = 0;
-    for (final comment in comments) {
-      count += comment.totalCount;
-    }
-    return count;
-  }
 
   List<PostMedia> get images => media.where((item) => item.isImage).toList();
 
@@ -149,6 +155,7 @@ class PostModel {
     int? likes,
     bool? liked,
     int? views,
+    int? commentCount,
     bool? isHot,
     bool? isFollowingAuthor,
     List<PostComment>? comments,
@@ -165,6 +172,7 @@ class PostModel {
       likes: likes ?? this.likes,
       liked: liked ?? this.liked,
       views: views ?? this.views,
+      commentCount: commentCount ?? this.commentCount,
       isHot: isHot ?? this.isHot,
       isFollowingAuthor: isFollowingAuthor ?? this.isFollowingAuthor,
       comments: comments ?? this.comments,
